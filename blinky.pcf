@@ -1,0 +1,12 @@
+set_io clk 21
+
+set_io redout0 44
+set_io blueout0 119
+set_io greenout0 118
+set_io oe 45
+set_io stb 47
+set_io clkout 48
+set_io sel_d 56
+set_io sel_c 60
+set_io sel_b 61
+set_io sel_a 62
