@@ -1,20 +1,29 @@
-PROJ = blinky
-PIN_DEF = blinky.pcf
+PROJ = ledz
+PIN_DEF = icestick.pcf
 DEVICE = hx1k
 
-all: $(PROJ).rpt $(PROJ).bin
+
+PROJ:= $(firstword $(MAKECMDGOALS))
+BUILDDIR:=build-$(PROJ)
+$(info BUILDDIR = $(BUILDDIR))
+#mkdir -p $(BUILDDIR)
+
+
+
+#$(PROJ).bin
 
 %.blif: %.v
-	yosys -p 'synth_ice40 -top top -blif $@' $<
+	@echo "Build dir =$(BUILDDIR)"
+	yosys -p 'synth_ice40 -top top -blif $(BUILDDIR)/$@' $<
 
 %.asc: $(PIN_DEF) %.blif
-	arachne-pnr -d $(subst hx,,$(subst lp,,$(DEVICE))) -o $@ -p $^ -P tq144
+	arachne-pnr -d $(subst hx,,$(subst lp,,$(DEVICE))) -o $(BUILDDIR)/$@ -p $(PIN_DEF) $(BUILDDIR) -P tq144
 
 %.bin: %.asc
-	icepack $< $@
+	icepack $(BUILDDIR)/$< $(BUILDDIR)/$@
 
 %.rpt: %.asc
-	icetime -d $(DEVICE) -mtr $@ $<
+	icetime -d $(DEVICE) -mtr $(BUILDDIR)/$@ $(BUILDDIR)/$<
 
 prog: $(PROJ).bin
 	sudo iceprog $<
@@ -24,6 +33,10 @@ sudo-prog: $(PROJ).bin
 	sudo iceprog $<
 
 clean:
-	rm -f $(PROJ).blif $(PROJ).asc $(PROJ).bin $(PROJ).rpt
+	rm -f $(BUILDDIR)/*
+#	rm -f $(PROJ).blif $(PROJ).asc $(PROJ).bin $(PROJ).rpt
+
+$(PROJ): $(BUILDDIR) $(PROJ).rpt
+
 
 .PHONY: all prog clean
