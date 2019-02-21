@@ -32,6 +32,9 @@ sudo-prog: $(PROJ).bin
 	@echo 'Executing prog as root!!!'
 	sudo iceprog $<
 
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
+
 clean:
 	rm -f $(BUILDDIR)/*
 #	rm -f $(PROJ).blif $(PROJ).asc $(PROJ).bin $(PROJ).rpt
