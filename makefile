@@ -1,10 +1,11 @@
 PROJ = ledz
-PIN_DEF = icestick.pcf
+#PIN_DEF = icestick.pcf
 DEVICE = hx1k
 
 
-PROJ:= $(firstword $(MAKECMDGOALS))
-BUILDDIR:=build-$(PROJ)
+#PROJ:= $(firstword $(MAKECMDGOALS))
+BUILDDIR:=build-$(TARGET)
+PIN_DEF:=$(TARGET).pcf
 $(info BUILDDIR = $(BUILDDIR))
 #mkdir -p $(BUILDDIR)
 
@@ -17,15 +18,15 @@ $(info BUILDDIR = $(BUILDDIR))
 	yosys -p 'synth_ice40 -top top -blif $(BUILDDIR)/$@' $<
 
 %.asc: $(PIN_DEF) %.blif
-	arachne-pnr -d $(subst hx,,$(subst lp,,$(DEVICE))) -o $(BUILDDIR)/$@ -p $(PIN_DEF) $(BUILDDIR) -P tq144
+	arachne-pnr -d $(subst hx,,$(subst lp,,$(DEVICE))) -o $(BUILDDIR)/$@ -p $(PIN_DEF) $(BUILDDIR)/$(PROJ).blif -P tq144
 
 %.bin: %.asc
-	icepack $(BUILDDIR)/$< $(BUILDDIR)/$@
+	icepack $< $@
 
 %.rpt: %.asc
 	icetime -d $(DEVICE) -mtr $(BUILDDIR)/$@ $(BUILDDIR)/$<
 
-prog: $(PROJ).bin
+prog: $(BUILDDIR)/$(PROJ).bin
 	sudo iceprog $<
 
 sudo-prog: $(PROJ).bin

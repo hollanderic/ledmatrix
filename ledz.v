@@ -4,6 +4,18 @@
 
 `define ROWLEN 64
 
+module mem(input clk, wen, input [7:0] addr, input [15:0] wdata, output reg [15:0] rdata);
+  reg [15:0] mem [0:255];
+  initial mem[0] = 255;
+  initial mem[22] = 1;
+  initial mem[7] = 1;
+  always @(posedge clk) begin
+        if (wen) mem[addr] <= wdata;
+        rdata <= mem[addr];
+  end
+endmodule
+
+
 
 module top (
     input clk,
@@ -21,29 +33,13 @@ module top (
 
     );
 
-/*
-    SB_PLL40_CORE #(
-        .FEEDBACK_PATH("SIMPLE"),
-        .PLLOUT_SELECT("GENCLK"),
-        .DIVR(4'b0000),
-        .DIVF(7'b1001111),
-        .DIVQ(3'b100),
-        .FILTER_RANGE(3'b001)
-    ) uut (
-        .LOCK(lock),
-        .RESETB(1'b1),
-        .BYPASS(1'b0),
-        .REFERENCECLK(clk),
-        .PLLOUTCORE(clkout)
-    );
-*/
-
     wire nclk = ~clk;
 
-    reg [7:0] pix [0:511];
+    reg [63:0] pix [0:15];
     reg [3:0] rowsel;
+
+    initial pix[0] = 8'h01;
 /*
-    initial pix[0] = 64'hffffffffffffffff;
     initial pix[1] = 64'h0000000000000001;
     initial pix[2] = 64'h8000000000000000;
     initial pix[3] = 64'h0000000000000000;
@@ -59,9 +55,9 @@ module top (
     initial pix[13] = 64'h0000000000000000;
     initial pix[14] = 64'h0000000000000000;
     initial pix[15] = 64'h0000000000000000;
- //   initial pix[15] = 64'hffffffffffffffff;
-
+    initial pix[15] = 64'hffffffffffffffff;
 */
+
     initial rowsel = 4'hf;
     initial stb = 0;
 
@@ -74,6 +70,10 @@ module top (
     assign sel_b = rowsel[1];
     assign sel_c = rowsel[2];
     assign sel_d = rowsel[3];
+
+    wire [15:0] dbus;
+
+    mem mem_0(clk, 0, counter[5:0], 16'h0000, dbus);
 
 
     always @(posedge clk) begin
@@ -105,17 +105,18 @@ module top (
     always @ (negedge clk) begin
         if (counter < 64) begin
 
-            if (pix[rowsel+1][3*(63-counter)])
+            if (dbus[0])
                 redout0 <= 1;
             else
                 redout0 <= 0;
-            if (pix[rowsel+1][3*(63-counter)+1])
-                greenout0 <= 1;
-            else
+
+//            if (pix[rowsel][counter])
+//                greenout0 <= 1;
+//            else
                 greenout0 <= 0;
-            if (pix[rowsel+1][3*(63-counter)+2])
-                blueout0 <= 1;
-            else
+//            if (pix[rowsel][counter])
+//                blueout0 <= 1;
+//            else
                 blueout0 <= 0;
         end
     end
