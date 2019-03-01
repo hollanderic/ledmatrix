@@ -54,18 +54,13 @@ module top (
     output tout0,
     );
 
-    reg [2:0] clkp;
 
-    reg [63:0] pix [0:15];
     reg [3:0] rowsel;
-    wire [3:0] rows;
-    assign rows = {rowsel};
 
-    reg clk2;
+    reg bit_clock;
 
     assign tout0 = rowsel[3];
 
-    initial rowsel = 4'hf;
     initial stb = 0;
 
     reg[5:0] scan_counter;
@@ -84,24 +79,20 @@ module top (
 
     assign abus = {rowsel[3:0] + 1, counter[5:0]};
 
-    wire [4:0] rbus;
-    assign rbus = {dbus[15:11]};
-
     mem mem_0(clk, 0, abus, 16'h0000, dbus);
 
-    wire [5:0] scanner;
-    assign scanner = {scan_counter[5:0]};
-
+// Divide input clock by 2 to get our bit clock
     always @(posedge clk) begin
-        clk2 <= clk2 + 1;
+        bit_clock <= bit_clock + 1;
     end
 
+// Increment the scan counter each time a new scan starts
     always @(negedge sel_d) begin
             scan_counter <= scan_counter +1;
     end
 
     always @(negedge clk) begin
-        if (clk2 == 0) begin
+        if (bit_clock == 0) begin
             if (counter == 64) begin
                 oe <= 1;
             end
@@ -122,17 +113,15 @@ module top (
         end
     end
 
-
-
 // This is where we need to update out data values
 
     always @ (negedge clk) begin
-        if (clk2)
+        if (bit_clock)
             if (counter < 64) begin
                 if (counter[0])
                     redout0 <= 1;
                 else
-                if (counter[6:1] > scanner)
+                if (counter[6:1] > scan_counter)
                     redout0 <= 1;
                 else
                     redout0 <= 0;
@@ -142,22 +131,18 @@ module top (
                 else
                     greenout0 <= 0;
 
-                if (dbus[4:0]  > scanner)
+                if (dbus[4:0]  > scan_counter)
                     blueout0 <= 1;
                 else
                     blueout0 <= 0;
-
-
             end
     end
-
-
 
 // This is where we update the clock pin
 //  don't make a positive edge during the latch period
 
-    always @ (clk2) begin
-        if (clk2) begin
+    always @ (bit_clock) begin
+        if (bit_clock) begin
           if (counter < 65)
             clkout <= 1;
         end else
