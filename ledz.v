@@ -12,23 +12,11 @@ module mem(input clk, wen, input [9:0] addr, input [15:0] wdata, output reg [15:
   initial mem[3] = 16'h0003;
   initial mem[4] = 16'h0001;
 
-
   initial mem[64]   = 16'hf800;
   initial mem[64+1] = 16'he800;
   initial mem[64+2] = 16'h3800;
   initial mem[64+3] = 16'h1800;
   initial mem[64+4] = 16'h0800;
-/*
-  initial mem[128] = 16'hf800;
-  initial mem[128+1] = 16'h4803;
-
-  initial mem[192+1] = 16'h6804;
-
-  initial mem[256 +1] = 16'hf800;
-  initial mem[256+64+1] = 16'ha806;
-  initial mem[256+128+1] = 16'hc807;
-  initial mem[256+192+1] = 16'hf008;
-*/
 
   always @(posedge clk) begin
         if (wen) mem[addr] <= wdata;
@@ -36,6 +24,29 @@ module mem(input clk, wen, input [9:0] addr, input [15:0] wdata, output reg [15:
   end
 endmodule
 
+module rgb16_decode(input sysclk, input bitclk, input [6:0] bitcounter,
+                    input [15:0] data, input [5:0] duty_counter,
+                    output red, output green, output blue
+                    );
+
+    always @ (negedge sysclk) begin
+        if (bitclk)
+            if (bitcounter < 64) begin
+                if (data[15:11] > duty_counter)
+                    red <= 1;
+                else
+                    red <= 0;
+                if (data[10:5] > duty_counter)
+                    green <= 1;
+                else
+                    green <= 0;
+                if (data[4:0] > duty_counter)
+                    blue <= 1;
+                else
+                    blue <= 0;
+            end
+    end
+endmodule
 
 
 module top (
@@ -54,18 +65,14 @@ module top (
     output tout0,
     );
 
-
     reg [3:0] rowsel;
+    reg       bit_clock;
+    reg [5:0] scan_counter;
+    reg [6:0] counter;
 
-    reg bit_clock;
-
-    assign tout0 = rowsel[3];
+    assign tout0 = rowsel[3];  //tout0 is debug trigger output
 
     initial stb = 0;
-
-    reg[5:0] scan_counter;
-    reg[6:0] counter;
-
     initial counter = 7'h0;
 
     assign sel_a = rowsel[0];
@@ -73,13 +80,16 @@ module top (
     assign sel_c = rowsel[2];
     assign sel_d = rowsel[3];
 
-
-    wire [15:0] dbus;
-    wire [9:0] abus;
+    wire [15:0] dbus0;
+    wire [9:0]  abus;
 
     assign abus = {rowsel[3:0] + 1, counter[5:0]};
 
-    mem mem_0(clk, 0, abus, 16'h0000, dbus);
+    // Memory bank for low half of display
+    mem mem_0(clk, 0, abus, 16'h0000, dbus0);
+    // Memory bank for upper half of display
+    mem mem_1(clk, 0, abus, 16'h0000, dbus1);
+
 
 // Divide input clock by 2 to get our bit clock
     always @(posedge clk) begin
@@ -126,12 +136,12 @@ module top (
                 else
                     redout0 <= 0;
 
-                if (dbus[10:5]  > scan_counter)
+                if (dbus0[10:5]  > scan_counter)
                     greenout0 <= 1;
                 else
                     greenout0 <= 0;
 
-                if (dbus[4:0]  > scan_counter)
+                if (dbus0[4:0]  > scan_counter)
                     blueout0 <= 1;
                 else
                     blueout0 <= 0;
