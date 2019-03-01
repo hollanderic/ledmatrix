@@ -15,7 +15,7 @@ $(info BUILDDIR = $(BUILDDIR))
 
 %.blif: %.v
 	@echo "Build dir =$(BUILDDIR)"
-	yosys -p 'synth_ice40 -top top -blif $(BUILDDIR)/$@' $<
+	yosys -Q -T -p 'synth_ice40 -top top -blif $(BUILDDIR)/$@' $<
 
 %.asc: $(PIN_DEF) %.blif
 	arachne-pnr -d $(subst hx,,$(subst lp,,$(DEVICE))) -o $(BUILDDIR)/$@ -p $(PIN_DEF) $(BUILDDIR)/$(PROJ).blif -P tq144

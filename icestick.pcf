@@ -19,3 +19,8 @@ set_io sel_d 56
 set_io sel_c 60
 set_io sel_b 61
 set_io sel_a 62
+
+set_io test0 78
+set_io test1 79
+set_io test2 80
+set_io test3 81
