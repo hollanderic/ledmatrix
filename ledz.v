@@ -48,6 +48,51 @@ module rgb16_decode(input sysclk, input bitclk, input [6:0] bitcounter,
     end
 endmodule
 
+module spi_slave(input sysclk, input sclk, input mosi, input cs,
+                 output [10:0] wr_addr, output wren, output [15:0] data);
+
+  reg [4:0] bitcount;
+  reg [15:0] datareg;
+  reg [15:0] outreg;
+  reg [10:0] addr;
+  reg [10:0] outaddr;
+
+  reg [2:0] data_valid;
+
+  assign wr_addr = addr;
+  initial data_valid = 0;
+
+  always @(posedge cs) begin
+    wr_addr <= 0;
+    bitcount <= 0;
+
+  end
+
+  always @(posedge sclk) begin
+    if (cs) begin
+      datareg <= {datareg[14:0], mosi};
+      bitcount <= bitcount + 1;
+    end
+  end
+
+  always @(negedge bitcount[3]) begin
+    outaddr <= addr;
+    addr <= addr + 1;
+    outreg <= datareg;
+    wren <= 1;
+    data_valid <= 5;
+  end
+
+  always @(posedge sysclk) begin
+    if (data_valid > 0) begin
+      wren <= 1;
+      data_valid <= data_valid -1;
+    end else
+      wren <= 0;
+  end
+
+endmodule
+
 
 module top (
     input clk,
@@ -62,15 +107,15 @@ module top (
     output redout0,
     output blueout0,
     output greenout0,
-    output tout0,
+    output redout1,
+    output blueout1,
+    output greenout1,
     );
 
     reg [3:0] rowsel;
     reg       bit_clock;
     reg [5:0] scan_counter;
     reg [6:0] counter;
-
-    assign tout0 = rowsel[3];  //tout0 is debug trigger output
 
     initial stb = 0;
     initial counter = 7'h0;
@@ -81,6 +126,8 @@ module top (
     assign sel_d = rowsel[3];
 
     wire [15:0] dbus0;
+    wire [15:0] dbus1;
+
     wire [9:0]  abus;
 
     assign abus = {rowsel[3:0] + 1, counter[5:0]};
@@ -124,29 +171,10 @@ module top (
     end
 
 // This is where we need to update out data values
-
-    always @ (negedge clk) begin
-        if (bit_clock)
-            if (counter < 64) begin
-                if (counter[0])
-                    redout0 <= 1;
-                else
-                if (counter[6:1] > scan_counter)
-                    redout0 <= 1;
-                else
-                    redout0 <= 0;
-
-                if (dbus0[10:5]  > scan_counter)
-                    greenout0 <= 1;
-                else
-                    greenout0 <= 0;
-
-                if (dbus0[4:0]  > scan_counter)
-                    blueout0 <= 1;
-                else
-                    blueout0 <= 0;
-            end
-    end
+    rgb16_decode rgb0(clk, bit_clock, counter, dbus0, scan_counter,
+                      redout0, greenout0, blueout0);
+    rgb16_decode rgb1(clk, bit_clock, counter, dbus1, scan_counter,
+                      redout1, greenout1, blueout1);
 
 // This is where we update the clock pin
 //  don't make a positive edge during the latch period

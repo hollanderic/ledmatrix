@@ -3,7 +3,15 @@ set_io clk 21
 set_io redout0 44
 set_io blueout0 119
 set_io greenout0 118
-set_io tout0 117
+
+set_io redout1 117
+set_io blueout1 116
+set_io greenout1 115
+
+set_io spi_cs 114
+set_io spi_sclk 113
+set_io spi_mosi 112
+
 set_io oe 45
 set_io stb 47
 set_io clkout 48
