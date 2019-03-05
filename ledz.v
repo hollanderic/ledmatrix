@@ -1,6 +1,3 @@
-// blinky.v
-// Blink the green LED with frequency 12e6/2^24 = 0.7Hz approx.
-
 
 `define ROWLEN 64
 
@@ -55,15 +52,18 @@ module rgb16_decode(input sysclk, input bitclk, input [6:0] bitcounter,
     always @ (negedge sysclk) begin
         if (bitclk)
             if (bitcounter < `ROWLEN) begin
-                if (data[15:11] > duty_counter)
+              //Assuming bytes came from a little endian source
+                if (data[7:3] > duty_counter)
                     red <= 1;
                 else
                     red <= 0;
-                if (data[10:5] > duty_counter)
+
+                if ({ data[2:0], data[15:13]} > duty_counter)
                     green <= 1;
                 else
                     green <= 0;
-                if (data[4:0] > duty_counter)
+
+                if (data[12:8] > duty_counter)
                     blue <= 1;
                 else
                     blue <= 0;
