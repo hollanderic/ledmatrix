@@ -4,34 +4,57 @@
 
 `define ROWLEN 64
 
-module mem(input clk, wen, input [9:0] wr_addr, input [9:0] addr, input [15:0] wdata, output reg [15:0] rdata);
+//Generate 30MHz clock to drive spi block
+//  (12MHz isn't sufficient to keep up with faster sclk speeds)
+module clock30gen(input clk, output clkout);
+  SB_PLL40_CORE #(
+    .FEEDBACK_PATH("SIMPLE"),
+    .PLLOUT_SELECT("GENCLK"),
+    .DIVR(4'b0000),
+    .DIVF(7'b1001111),
+    .DIVQ(3'b101),
+    .FILTER_RANGE(3'b001)
+  ) uut (
+    .RESETB(1'b1),
+    .BYPASS(1'b0),
+    .REFERENCECLK(clk),
+    .PLLOUTCORE(clkout)
+  );
+endmodule
+
+
+//Dual port memory module
+module mem(input clk, wen, input [9:0] wr_addr, input [9:0] rd_addr, input [15:0] wdata, output reg [15:0] rdata);
   reg [15:0] mem [0:1023];
+  //Put s test pattern in memory so we know it is running on startup
   initial mem[0] = 16'h001f;
   initial mem[1] = 16'h000f;
   initial mem[2] = 16'h000e;
   initial mem[3] = 16'h0003;
   initial mem[4] = 16'h0001;
 
-  initial mem[64]   = 16'hf800;
-  initial mem[64+1] = 16'he800;
-  initial mem[64+2] = 16'h3800;
-  initial mem[64+3] = 16'h1800;
-  initial mem[64+4] = 16'h0800;
-
+  initial mem[`ROWLEN]   = 16'hf800;
+  initial mem[`ROWLEN+1] = 16'he800;
+  initial mem[`ROWLEN+2] = 16'h3800;
+  initial mem[`ROWLEN+3] = 16'h1800;
+  initial mem[`ROWLEN+4] = 16'h0800;
   always @(posedge clk) begin
         if (wen) mem[wr_addr] <= wdata;
-        rdata <= mem[addr];
+        rdata <= mem[rd_addr];
   end
 endmodule
 
+
+//Decode 16-bit word into rgb components and drive serial line accordingly
+//  bitcounter is used to determine if the pixel should be on for this refresh
+//   this is used to provide 1/(max(bitcounter)) levels of brightness per color
 module rgb16_decode(input sysclk, input bitclk, input [6:0] bitcounter,
                     input [15:0] data, input [5:0] duty_counter,
                     output red, output green, output blue
                     );
-
     always @ (negedge sysclk) begin
         if (bitclk)
-            if (bitcounter < 64) begin
+            if (bitcounter < `ROWLEN) begin
                 if (data[15:11] > duty_counter)
                     red <= 1;
                 else
@@ -48,71 +71,78 @@ module rgb16_decode(input sysclk, input bitclk, input [6:0] bitcounter,
     end
 endmodule
 
-module junk(input sysclk, output stro);
-begin
-  reg temp;
-  initial temp = 0;
-  always @(posedge sysclk) begin
-    temp<=temp +1;
-    stro<=temp;
-  end
-end
-endmodule
-
-module spi_slave(input syclk, input sclk, input mosi, input cs,
-                 output [10:0] wr_addr, output wren, output [15:0] data, output test);
+module spi_slave(input mod_clk,                       // clock for module logic
+                 input sclk, input mosi, input cs,    // spi signals
+                 output [10:0] wr_addr, output wren, output [15:0] data,
+                 output [3:0] test);
 
   reg [3:0] bitcount;
   reg [15:0] datareg;
   reg [10:0] addr;
-  reg word_ready;
-  reg fsync;
-  reg [2:0] data_valid;
+  reg word_ready = 0;
+  reg [3:0] data_valid;
 
-  initial fsync = 0;
   initial data_valid = 0;
 
+  assign test[0] = mod_clk;
+  assign test[1] = word_ready;
+  assign test[3] = wren;
 
+  //Since spi clk is not syncronous with out clock, need to sample and
+  //sync the signals into our clock domain.
+  reg [2:0] sclk_r;  always @(posedge mod_clk) sclk_r <= {sclk_r[1:0], sclk};
+  wire sclk_r_posedge = (sclk_r[2:1]==2'b01);
+  wire sclk_r_negedge = (sclk_r[2:1]==2'b10);
 
-  always @(cs) begin
-    if (cs)
-      fsync <= 0;
-    else
-      fsync <= 1;
-  end
+  reg [2:0] cs_r;  always @(posedge mod_clk) cs_r <= {cs_r[1:0], cs};
+  wire cs_r_state = cs_r[1];
+  wire start_frame = (cs_r[2:1]==2'b01);
+  wire end_frame = (cs_r[2:1]==2'b10);
 
+  reg [1:0] mosi_r;  always @(posedge mod_clk) mosi_r <= {mosi_r[0], mosi};
+  wire mosi_r_state = mosi_r[1];
 
-  always @(posedge sclk) begin
-      if (cs) begin
-        if (bitcount == 4'b1111) begin
-          word_ready <= 1;
-          addr <= addr + 1;
-        end else begin
-          word_ready <= 0;
-        end
-        datareg <= {datareg[14:0], mosi};
-        bitcount <= bitcount + 1;
-        test <= mosi;
-      end else begin
-        addr <= 0;
-        bitcount <= 0;
-        word_ready <= 0;
+  always @(posedge mod_clk)
+  begin
+    if(~cs_r_state)
+      bitcount <= 4'b0000;
+    else begin
+      if(sclk_r_posedge)
+      begin
+        test[2] <= 1;
+        bitcount <= bitcount + 4'b0001;
+        datareg <= {datareg[14:0], mosi_r_state};
       end
-  end
-
-  always @(posedge syclk) begin
-    if (word_ready) begin
-      wr_addr <= addr - 1;
-      data <= datareg;
-      data_valid <= 2;
-      wren <= 1;
-    end else if (data_valid) begin
-      data_valid <= data_valid - 1;
-    end else begin
-      wren <= 0;
+      if(sclk_r_negedge) begin
+        test[2] <= 0;
+      end
     end
   end
 
+  always @(posedge mod_clk) word_ready <= cs_r_state && sclk_r_posedge && (bitcount==4'b1111);
+
+  always @(posedge mod_clk) begin
+    if  (word_ready ) begin
+      wr_addr <= addr;
+      data <= datareg;
+      data_valid <= 8;
+    end
+
+    if (data_valid) begin
+    // Assuming mod_clk is faster than base clock of who we are feeding data to,
+    //  need to stretch out the wren pulse to make sure it catches an edge
+      if (data_valid == 8) begin
+        wren <=1;
+        addr <= addr + 1;
+      end
+      if (data_valid == 1) begin
+        wren <=0;
+      end
+      data_valid <= data_valid - 1;
+    end
+    if (end_frame)
+        addr <= 0;
+  end
 endmodule
 
 
@@ -151,7 +181,11 @@ module top (
     initial stb = 0;
     initial counter = 7'h0;
 
-
+    wire [3:0] test;
+    assign test[0] = test0;
+    assign test[1] = test1;
+    assign test[2] = test2;
+    assign test[3] = test3;
 
     assign sel_a = rowsel[0];
     assign sel_b = rowsel[1];
@@ -167,15 +201,21 @@ module top (
     wire [10:0] wr_addr;
     wire [15:0] wr_data;
 
-    wire wren1 = test1 & wr_addr[10];
+    wire wren0 = wren & ~wr_addr[10];
+    wire wren1 = wren & wr_addr[10];
 
     assign read_abus = {rowsel[3:0] + 1, counter[5:0]};
 
+    wire spiclk;
+    clock30gen spiclk0(clk, spiclk);
+// spi slave module (input only)
+    spi_slave spi0(spiclk, spi_sclk, spi_mosi, spi_cs,
+                   wr_addr, wren, wr_data, test);
+
     // Memory bank for low half of display
-    mem mem_0(clk, test1, wr_addr[9:0], read_abus, wr_data, dbus0);
+    mem mem_0(clk, wren0, wr_addr[9:0], read_abus, wr_data, dbus0);
     // Memory bank for upper half of display
     mem mem_1(clk, wren1, wr_addr[9:0], read_abus, wr_data, dbus1);
-
 
 // Divide input clock by 2 to get our bit clock
     always @(posedge clk) begin
@@ -189,21 +229,21 @@ module top (
 
     always @(negedge clk) begin
         if (bit_clock == 0) begin
-            if (counter == 64) begin
+            if (counter == `ROWLEN) begin
                 oe <= 1;
             end
-            if (counter == 65)
+            if (counter == (`ROWLEN + 1))
                 stb <= 1;
-            if (counter == 66)
+            if (counter == (`ROWLEN + 2))
                 stb <= 0;
-            if (counter == 67)
+            if (counter == (`ROWLEN + 3))
                 rowsel <= rowsel + 1;
-            if (counter == 68) begin
+            if (counter == (`ROWLEN + 4)) begin
                 oe <= 0;
                 counter <= 0;
             end
         end else begin
-            if (counter == 64)
+            if (counter == `ROWLEN)
                 oe <= 1;
             counter <= counter + 1;
         end
@@ -215,25 +255,11 @@ module top (
     rgb16_decode rgb1(clk, bit_clock, counter, dbus1, scan_counter,
                       redout1, greenout1, blueout1);
 
-//    always @( spi_cs) begin
-//      if (spi_cs)
-//        test0 <= 1;
-//      else begin
-//        test0 <= 0;
-//      end
-//    end
-
-
-
-    spi_slave spi0(clk, spi_sclk, spi_mosi, spi_cs,
-                   wr_addr, test1, wr_data, test0);
-
 // This is where we update the clock pin
 //  don't make a positive edge during the latch period
-
     always @ (bit_clock) begin
         if (bit_clock) begin
-          if (counter < 65)
+          if (counter < (`ROWLEN + 1))
             clkout <= 1;
         end else
           clkout <= 0;

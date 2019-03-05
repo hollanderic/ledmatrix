@@ -1,0 +1,21 @@
+-Modify makefile (and potentially design) to also support tinyFPGAbx
+    Only supports icestick as it is now
+
+-Double buffer the data so spi writes to background and flips page after write
+
+-Add support for commands over spi
+    presently, CS going high designates start of frame (addr 0x0000 in framebuffer)
+    and will write sequentially until cs goes low.
+    *Implement as first word of transfer being a command token
+
+-Sort out endianness of spi writes
+
+-Support interfaces other than SPI
+  -MIPI-DSI
+  -QSPI
+  -i2c (probably low value, too slow)
+  -Parallel (should have enough IO on tinyFPGA)
+
+
+
+
