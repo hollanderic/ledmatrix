@@ -1,0 +1,2 @@
+DEVICE:=hx1k
+PACKAGE:=tq144

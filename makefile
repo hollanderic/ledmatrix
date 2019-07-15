@@ -1,46 +1,72 @@
-PROJ = ledz
-#PIN_DEF = icestick.pcf
-DEVICE = hx1k
 
+LOCAL_MAKEFILE:=$(MAKEFILE_LIST)
 
-#PROJ:= $(firstword $(MAKECMDGOALS))
-BUILDDIR:=build-$(TARGET)
-PIN_DEF:=$(TARGET).pcf
+project-name := $(firstword $(MAKECMDGOALS))
+ifneq ($(project-name),)
+$(info Project Name= $(project-name))
+
+ifneq ($(strip $(wildcard ./projects/$(project-name).mk)),)
+do-nothing := 1
+$(MAKECMDGOALS) _all: make-make
+	@:
+make-make:
+	PROJECT=$(project-name) $(MAKE) -f$(LOCAL_MAKEFILE) $(filter-out $(project-name), $(MAKECMDGOALS))
+
+.PHONY: make-make
+endif
+endif
+
+ifneq ($(do-nothing),)
+$(info First make pass ending...)
+else
+
+ifneq ($(PROJECT),)
+
+-include projects/$(PROJECT).mk
+ifndef PACKAGE
+$(error Could not find project or no package is defined)
+endif
+ifndef DEVICE
+$(error Could not find project or no device is defined)
+endif
+ifndef PINDEF
+$(error Could not find project or no pin definition is defined)
+endif
+
+-include $(APP)/rules.mk
+
+BUILDDIR:=build-$(PROJECT)
 $(info BUILDDIR = $(BUILDDIR))
-#mkdir -p $(BUILDDIR)
+$(shell mkdir -p $(BUILDDIR))
 
+all:: $(SV_SOURCES) $(BUILDDIR)/$(PROJECT).bin
+	$(info Ran default rule)
 
+%.blif: $(SV_SOURCES)
+	@echo "Running yosys... Build dir =$(BUILDDIR)   $@  $<"
+	@yosys -q -p 'synth_ice40 -top top -blif $@' $<
 
-#$(PROJ).bin
-
-%.blif: %.v
-	@echo "Build dir =$(BUILDDIR)"
-	yosys -Q -T -p 'synth_ice40 -top top -blif $(BUILDDIR)/$@' $<
-
-%.asc: $(PIN_DEF) %.blif
-	arachne-pnr -d $(subst hx,,$(subst lp,,$(DEVICE))) -o $(BUILDDIR)/$@ -p $(PIN_DEF) $(BUILDDIR)/$(PROJ).blif -P tq144
+%.asc: %.blif
+	@echo "Running arachne-pnr............"
+	arachne-pnr -d $(subst hx,,$(subst lp,,$(DEVICE))) -o $@ -p $(PINDEF) $< -P $(PACKAGE)
+	@echo "Ran arachne-pnr................"
 
 %.bin: %.asc
-	icepack $< $@
+	@echo "Running bin rule"
+	@icepack $< $@
 
 %.rpt: %.asc
-	icetime -d $(DEVICE) -mtr $(BUILDDIR)/$@ $(BUILDDIR)/$<
+	@echo "Running rpt rule"
+	@icetime -d $(DEVICE) -mtr $@ $<
 
-prog: $(BUILDDIR)/$(PROJ).bin
-	sudo iceprog $<
-
-sudo-prog: $(PROJ).bin
-	@echo 'Executing prog as root!!!'
-	sudo iceprog $<
-
-$(BUILDDIR):
-	mkdir -p $(BUILDDIR)
+prog: $(BUILDDIR)/$(PROJECT).bin
+	sudo /usr/local/bin/iceprog $<
 
 clean:
-	rm -f $(BUILDDIR)/*
-#	rm -f $(PROJ).blif $(PROJ).asc $(PROJ).bin $(PROJ).rpt
+	rm -rf $(BUILDDIR)
 
-$(PROJ): $(BUILDDIR) $(PROJ).rpt
+.PRECIOUS: %.blif %.asc %.rpt
 
-
-.PHONY: all prog clean
+.PHONY: default clean
+endif
+endif
